@@ -1,6 +1,8 @@
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
+void _racLifetimeNewDeallocImplementation(Class baseClass, void* lifetimeTokenKey);
+
 @interface NSObject (RACObjCRuntimeUtilities)
 
 /// Register a block which would be triggered when `selector` is called.

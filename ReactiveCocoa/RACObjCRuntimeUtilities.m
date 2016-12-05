@@ -3,6 +3,36 @@
 #import <objc/message.h>
 #import <objc/runtime.h>
 
+void _racLifetimeNewDeallocImplementation(Class baseClass, void* lifetimeTokenKey) {
+	SEL deallocSEL = sel_registerName("dealloc");
+
+	__block IMP existingImpl = nil;
+
+	 IMP newImpl = imp_implementationWithBlock(^(__unsafe_unretained id self) {
+		objc_setAssociatedObject(self, lifetimeTokenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+		if (existingImpl != NULL) {
+			((void(*)(__unsafe_unretained id, SEL)) existingImpl)(self, deallocSEL);
+		} else {
+			struct objc_super superInfo = {
+				.receiver = self,
+				.super_class = class_getSuperclass(baseClass)
+			};
+
+			((void(*)(struct objc_super*, SEL)) objc_msgSendSuper)(&superInfo, deallocSEL);
+		}
+	});
+
+	// If the class has no implementation of `dealloc`, the branch would not be
+	// executed.
+	if (!class_addMethod(baseClass, deallocSEL, newImpl, "v@:")) {
+		// The class has an existing `dealloc`. Preserve that as `existingImpl`.
+		Method deallocMethod = class_getInstanceMethod(baseClass, deallocSEL);
+		existingImpl = method_getImplementation(deallocMethod);
+		existingImpl = method_setImplementation(deallocMethod, newImpl);
+	}
+}
+
 NSString * const RACSelectorSignalErrorDomain = @"RACSelectorSignalErrorDomain";
 const NSInteger RACSelectorSignalErrorMethodSwizzlingRace = 1;
 const NSExceptionName RACSwizzleException = @"RACSwizzleException";

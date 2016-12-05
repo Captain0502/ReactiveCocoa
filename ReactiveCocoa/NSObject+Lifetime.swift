@@ -15,10 +15,26 @@ extension Reactive where Base: NSObject {
 			let token = Lifetime.Token()
 			let lifetime = Lifetime(token)
 
+			let objcClass: AnyClass = (base as AnyObject).objcClass
+
+			// Swizzle `-dealloc` so that the lifetime token is released at the
+			// beginning of the deallocation chain, and only after the KVO `-dealloc`.
+			objc_sync_enter(objcClass)
+			if objc_getAssociatedObject(objcClass, &lifetimeKey) == nil {
+				objc_setAssociatedObject(objcClass, &lifetimeKey, true, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+				_racLifetimeNewDeallocImplementation(objcClass, &lifetimeTokenKey)
+			}
+			objc_sync_exit(objcClass)
+
 			objc_setAssociatedObject(base, &lifetimeTokenKey, token, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 			objc_setAssociatedObject(base, &lifetimeKey, lifetime, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
 
 			return lifetime
 		}
 	}
+}
+
+@objc private protocol ObjCClassReporting {
+	@objc(class)
+	var objcClass: AnyClass { get }
 }
